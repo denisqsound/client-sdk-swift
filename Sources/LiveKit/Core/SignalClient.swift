@@ -156,7 +156,7 @@ actor SignalClient: Loggable {
                  publisherOffer: Livekit_SessionDescription? = nil,
                  connectSpan: Span? = nil) async throws -> ConnectResponse
     {
-        await cleanUp()
+        await cleanUp(resetSession: reconnectMode != .quick)
 
         if let reconnectMode {
             log("[Connect] mode: \(String(describing: reconnectMode))")
@@ -268,11 +268,10 @@ actor SignalClient: Loggable {
     // Must never be guarded by Task.isCancelled — see Room.cleanUp()
     // for the full cancellation contract.
     //
-    // Only called from:
-    //   Room.cleanUp()           ──► forwards disconnectError
-    //   onWebSocketFailure()     ──► WebSocket error (guarded by cancellation
-    //                                and socket identity)
-    func cleanUp(withError disconnectError: Error? = nil) async {
+    // Потеря транспорта и quick reconnect сохраняют JoinResponse: сервер
+    // не повторяет параметры heartbeat в ReconnectResponse. Новая сессия,
+    // full reconnect и окончательный Room.cleanUp явно сбрасывают их.
+    func cleanUp(withError disconnectError: Error? = nil, resetSession: Bool = false) async {
         log("withError: \(String(describing: disconnectError))")
 
         // Cancel ping/pong timers immediately to prevent stale timers from affecting future connections
@@ -283,7 +282,9 @@ actor SignalClient: Loggable {
             $0.messageLoopTask = nil
             $0.socket?.close()
             $0.socket = nil
-            $0.lastJoinResponse = nil
+            if resetSession {
+                $0.lastJoinResponse = nil
+            }
             $0.isAwaitingConnectResponse = true
         }
 
@@ -873,7 +874,9 @@ private extension SignalClient {
         // Clear timeout timer
         _pingTimeoutTimer.cancel()
     }
+}
 
+extension SignalClient {
     func _restartPingTimer() async {
         // Always cancel first...
         _pingIntervalTimer.cancel()

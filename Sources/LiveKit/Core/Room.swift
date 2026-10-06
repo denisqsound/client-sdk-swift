@@ -610,7 +610,7 @@ extension Room {
         // reader that will never finish would stall its topic's ordered queue.
         await incomingStreamManager.reset()
 
-        await signalClient.cleanUp(withError: disconnectError)
+        await signalClient.cleanUp(withError: disconnectError, resetSession: true)
         // Cancel all track stats timers before closing transports to prevent
         // stats collection from accessing destroyed WebRTC channels.
         cancelTimers()
